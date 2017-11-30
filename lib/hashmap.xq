@@ -1,4 +1,4 @@
-xquery version "1.0-ml";
+xquery version "3.0";
 
 (:
  : Copyright (c) 2010-2012 John Snelson
@@ -38,9 +38,9 @@ declare %private function value($pair)
 declare %private function hash($a as item()) as xs:integer
 {
   xs:integer(fn:fold-left(
-    function($z,$v) { (($z + $v) * 8947693) mod 4294967296 },
+    fn:string-to-codepoints(key($a)),
     2489012344,
-    fn:string-to-codepoints(key($a))
+    function($z,$v) { (($z + $v) * 8947693) mod 4294967296 }
   ))
 };
 

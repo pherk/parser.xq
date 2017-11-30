@@ -1,4 +1,4 @@
-xquery version "1.0-ml";
+xquery version "3.0";
 
 (:
  : Copyright (c) 2013 John Snelson
@@ -19,9 +19,9 @@ xquery version "1.0-ml";
 module namespace p = "http://snelson.org.uk/functions/parser-runtime";
 declare default function namespace "http://snelson.org.uk/functions/parser-runtime";
 
-declare variable $epsilon-id := 0;
-declare variable $ws-id := 1;
-declare variable $start-id := 2;
+declare variable $p:epsilon-id := 0;
+declare variable $p:ws-id := 1;
+declare variable $p:start-id := 2;
 
 (: -------------------------------------------------------------------------- :)
 

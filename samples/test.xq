@@ -1,3 +1,4 @@
+xquery version "3.1";
 import module namespace gr = "http://snelson.org.uk/functions/grammar" at "../grammar.xq";
 import module namespace p = "http://snelson.org.uk/functions/parser" at "../parser.xq";
 
@@ -36,11 +37,11 @@ let $input := '
 (: abc   abc :)
 (: abcabcabcabc abc abc abc abc abc abc abc abc abc abc abc abc abc" :)
 
-let $t_grammar := xdmp:elapsed-time()
+let $t_grammar := util:system-time()
 let $parser := p:make-parser($grammar,"eval")
-let $t_parser := xdmp:elapsed-time()
+let $t_parser := util:system-time()
 let $result := $parser($input)
-let $t_parse := xdmp:elapsed-time()
+let $t_parse := util:system-time()
 return (
   "Grammar: " || $t_grammar,
   "Parser: " || ($t_parser - $t_grammar),
@@ -48,12 +49,12 @@ return (
   gr:grammar-as-string($grammar),
   $result()
 ),
-(: let $t_grammar := xdmp:elapsed-time() :)
+(: let $t_grammar := util:system-time() :)
 (: let $xq := p:generate-xquery($grammar,"main-module") :)
 (: let $parser := xdmp:eval($xq) :)
-(: let $t_parser := xdmp:elapsed-time() :)
+(: let $t_parser := util:system-time() :)
 (: let $result := $parser($input) :)
-(: let $t_parse := xdmp:elapsed-time() :)
+(: let $t_parse := util:system-time() :)
 (: return ( :)
 (:   "Grammar: " || $t_grammar, :)
 (:   "Parser: " || ($t_parser - $t_grammar), :)
@@ -62,4 +63,4 @@ return (
 (:   $xq, :)
 (:   $result() :)
 (: ), :)
-xdmp:elapsed-time()
+util:system-time()

@@ -1,4 +1,4 @@
-xquery version "3.0";
+xquery version "3.1";
 
 (:
  : Copyright (c) 2013 John Snelson
@@ -17,8 +17,8 @@ xquery version "3.0";
  :)
 
 module namespace gr = "http://snelson.org.uk/functions/grammar";
-declare default function namespace "http://snelson.org.uk/functions/grammar";
-import module namespace map = "http://snelson.org.uk/functions/hashmap" at "lib/hashmap.xq";
+(: declare default function namespace "http://snelson.org.uk/functions/grammar"; :)
+import module namespace hmap = "http://snelson.org.uk/functions/hashmap" at "lib/hashmap.xq";
 import module namespace hamt = "http://snelson.org.uk/functions/hamt" at "lib/hamt.xq";
 
 (:
@@ -30,57 +30,65 @@ import module namespace hamt = "http://snelson.org.uk/functions/hamt" at "lib/ha
  : Category = NT integer string | T integer integer | TR integer integer integer
  :)
 
-declare variable $ws-state := "<ws>";
-declare variable $ws-category := category-nt("<ws>");
-declare variable $epsilon-state := "<epsilon>";
-declare variable $epsilon-category := category-nt("<epsilon>");
+declare variable $gr:ws-state := "<ws>";
+declare variable $gr:ws-category := gr:category-nt("<ws>");
+declare variable $gr:epsilon-state := "<epsilon>";
+declare variable $gr:epsilon-category := gr:category-nt("<epsilon>");
 
-declare variable $epsilon-id := 0;
-declare variable $ws-id := 1;
-declare variable $start-id := 2;
+declare variable $gr:epsilon-id := 0;
+declare variable $gr:ws-id := 1;
+declare variable $gr:start-id := 2;
 
-declare variable $ws-option := "ws-explicit";
+declare variable $gr:ws-option := "ws-explicit";
+declare variable $gr:dummy-actions := (
+  "",
+  "",
+  "",
+  "",
+  function($n) { "" },
+  function($n) { "" }
+);
 
 (: -------------------------------------------------------------------------- :)
 
-declare %private function category-nt($n)
+declare %private function gr:category-nt($n)
 {
-  let $hash := hash((fn:string-to-codepoints($n),0))
+  let $hash := gr:hash((fn:string-to-codepoints($n),0))
   return function($nt,$t,$tr) { $nt($hash,$n) }
 };
 
-declare %private function category-t($n)
+declare %private function gr:category-t($n)
 {
-  let $hash := hash((8945782,$n))
+  let $hash := gr:hash((8945782,$n))
   return function($nt,$t,$tr) { $t($hash,$n) }
 };
 
-declare %private function category-tr($s,$e)
+declare %private function gr:category-tr($s,$e)
 {
-  let $hash := hash((78906239,$s,$e))
+  let $hash := gr:hash((78906239,$s,$e))
   return function($nt,$t,$tr) { $tr($hash,$s,$e) }
 };
 
-declare %private function hash-fuse($z,$v) as xs:integer
+declare %private function gr:hash-fuse($z,$v) as xs:integer
 {
   xs:integer((($z * 5) + $v) mod 4294967296)
 };
 
-declare function hash($a as xs:integer*) as xs:integer
+declare function gr:hash($a as xs:integer*) as xs:integer
 {
-  fn:fold-left(hash-fuse#2,2489012344,$a)
+  fn:fold-left($a,2489012344,gr:hash-fuse#2)
 };
 
-declare function categories-hash($a as item()*) as xs:integer
+declare function gr:categories-hash($a as item()*) as xs:integer
 {
-  hash($a ! .(
+  gr:hash($a ! .(
     (:nt:) function($h,$s) { $h },
     (:t:) function($h,$s) { $h },
     (:tr:) function($h,$s,$e) { $h }
   ))
 };
 
-declare function categories-eq($a as item()*, $b as item()*) as xs:boolean
+declare function gr:categories-eq($a as item()*, $b as item()*) as xs:boolean
 {
   fn:count($a) eq fn:count($b) and
   (every $p in fn:map-pairs(function($x,$y) {
@@ -110,41 +118,41 @@ declare function categories-eq($a as item()*, $b as item()*) as xs:boolean
     },$a,$b) satisfies $p)
 };
 
-declare %private function rulerhs($categories,$ws,$f)
+declare %private function gr:rulerhs($categories,$ws,$f)
 {
   function($g) { $g($categories,$ws,$f) }
 };
 
-declare %private function rulerhs-hash($a as item()) as xs:integer
+declare %private function gr:rulerhs-hash($a as item()) as xs:integer
 {
   $a(function($c,$ws,$f) {
-    hash((categories-hash($c),xs:integer($ws)))
+    gr:hash((gr:categories-hash($c),xs:integer($ws)))
   })
 };
 
-declare %private function rulerhs-eq($a as item(), $b as item()) as xs:boolean
+declare %private function gr:rulerhs-eq($a as item(), $b as item()) as xs:boolean
 {
   $a(function($ac,$aws,$af) {
     $b(function($bc,$bws,$bf) {
-      categories-eq($ac,$bc) and $aws eq $bws
+      gr:categories-eq($ac,$bc) and $aws eq $bws
     })
   })
 };
 
-declare %private function ruleset() as item()
+declare %private function gr:ruleset() as item()
 {
   hamt:create()
 };
 
-declare %private function ruleset-put(
+declare %private function gr:ruleset-put(
   $set as item(),
   $rule
 ) as item()
 {
-  hamt:put(rulerhs-hash#1,rulerhs-eq#2,$set,$rule)
+  hamt:put(gr:rulerhs-hash#1,gr:rulerhs-eq#2,$set,$rule)
 };
 
-declare function ruleset-fold(
+declare function gr:ruleset-fold(
   $f as function(item()*, item()*) as item()*,
   $z as item()*,
   $set as item()
@@ -159,7 +167,7 @@ declare function ruleset-fold(
  : Grammar construction functions
  :)
 
-declare %private function codepoint($c)
+declare %private function gr:codepoint($c)
 {
   switch($c)
   case 0 return "\0"
@@ -171,55 +179,47 @@ declare %private function codepoint($c)
   default return fn:codepoints-to-string($c)
 };
 
-declare function categories-as-string($cs)
+declare function gr:categories-as-string($cs)
 {
   for $c in fn:head($cs)
   return $c(
     (:nt:) function($h,$s) {
       $s,
-      categories-as-string(fn:tail($cs))
+      gr:categories-as-string(fn:tail($cs))
     },
     (:t:) function($h,$s) {
-      let $r := combine-terminals-as-string(fn:tail($cs))
+      let $r := gr:combine-terminals-as-string(fn:tail($cs))
       return (
-        ('"' || codepoint($s) || fn:head($r) || '"'),
-        categories-as-string(fn:tail($r))
+        ('"' || gr:codepoint($s) || fn:head($r) || '"'),
+        gr:categories-as-string(fn:tail($r))
       )
     },
     (:tr:) function($h,$s,$e) {
-      "[" || codepoint($s) || "-" || codepoint($e) || "]",
-      categories-as-string(fn:tail($cs))
+      "[" || gr:codepoint($s) || "-" || gr:codepoint($e) || "]",
+      gr:categories-as-string(fn:tail($cs))
     }
   )
 };
 
-declare %private function combine-terminals-as-string($cs)
+declare %private function gr:combine-terminals-as-string($cs)
 {
   for $c in fn:head($cs)
   return $c(
     (:nt:) function($h,$s) { "", $cs },
     (:t:) function($h,$s) {
-      let $r := combine-terminals-as-string(fn:tail($cs))
-      return ((codepoint($s) || fn:head($r)), fn:tail($r))
+      let $r := gr:combine-terminals-as-string(fn:tail($cs))
+      return ((gr:codepoint($s) || fn:head($r)), fn:tail($r))
     },
     (:tr:) function($h,$s,$e) { "", $cs }
   )
 };
 
-declare %private variable $dummy-actions := (
-  "",
-  "",
-  "",
-  "",
-  function($n) { "" },
-  function($n) { "" }
-);
 
-declare function grammar-as-string($grammar)
+declare function gr:grammar-as-string($grammar)
 {
   let $grammar := $grammar($gr:dummy-actions)
   return fn:string-join(
-    for $r in map:fold(function($z,$n,$rule) { $z,function() { $n,$rule } },(),$grammar)
+    for $r in hmap:fold(function($z,$n,$rule) { $z,function() { $n,$rule } },(),$grammar)
     let $r_ := $r()
     let $n := fn:head($r_)
     let $r_ := fn:tail($r_)
@@ -230,11 +230,11 @@ declare function grammar-as-string($grammar)
     return (
       "(" || $id || ") " || $n || " ::= " ||
       fn:string-join(
-        ruleset-fold(function($s,$rule) {
+        gr:ruleset-fold(function($s,$rule) {
           $s,
           $rule(function($c,$ws,$f) {
             (if(fn:not($ws)) then "ws-explicit(" else "") ||
-            fn:string-join(categories-as-string($c)," ") ||
+            fn:string-join(gr:categories-as-string($c)," ") ||
             (if(fn:not($ws)) then ")" else "")
           })
         },(),$ruleset),
@@ -243,380 +243,387 @@ declare function grammar-as-string($grammar)
   "&#10;")
 };
 
-declare %private function make-rules($n,$i,$c,$r,$ws,$f,$df)
+declare %private function gr:make-rules($n,$i,$c,$r,$ws,$f,$df)
 {
   if(fn:empty($r)) then ($i,function($g) { $g($n,$c,$ws,$f) })
   else fn:head($r)($n,$i,$c,fn:tail($r),$ws,$f,$df)
 };
 
-declare %private function chain($i,$fns)
+declare %private function gr:chain($i,$fns)
 {
   if(fn:empty($fns)) then $i else
   let $r1 := fn:head($fns)($i)
-  let $r2 := chain(fn:head($r1),fn:tail($fns))
+  let $r2 := gr:chain(fn:head($r1),fn:tail($fns))
   return (fn:head($r2),fn:tail($r1),fn:tail($r2))
 };
 
-declare function codepoint-range($start,$end)
+declare function gr:codepoint-range($start,$end)
 {
   function($n,$i,$c,$r,$ws,$f,$df) {
-    make-rules($n,$i,($c,category-tr($start,$end)),$r,$ws,$f,$df)
+    gr:make-rules($n,$i,($c,gr:category-tr($start,$end)),$r,$ws,$f,$df)
   }
 };
 
-declare function char-range($start_,$end_)
+declare function gr:char-range($start_,$end_)
 {
   let $start := fn:string-to-codepoints($start_) treat as xs:integer
   let $end := fn:string-to-codepoints($end_) treat as xs:integer
-  return codepoint-range($start,$end)
+  return gr:codepoint-range($start,$end)
 };
 
-declare function term($value)
+declare function gr:term($value)
 {
   function($n,$i,$c,$r,$ws,$f,$df) {
     if(fn:string-length($value) eq 1 or fn:not($ws)) then (
-      make-rules($n,$i,($c,fn:string-to-codepoints($value) ! category-t(.)),$r,$ws,$f,$df)
+      gr:make-rules($n,$i,($c,fn:string-to-codepoints($value) ! gr:category-t(.)),$r,$ws,$f,$df)
     ) else (
       let $n_ := $n || "_" || $i
-      let $nt := non-term($n_)
+      let $nt := gr:non-term($n_)
       return (
-        make-rules($n,$i+1,$c,($nt,$r),$ws,$f,$df),
-        fn:tail(make-rules($n_,1,fn:string-to-codepoints($value) ! category-t(.),(),fn:false(),
+        gr:make-rules($n,$i+1,$c,($nt,$r),$ws,$f,$df),
+        fn:tail(gr:make-rules($n_,1,fn:string-to-codepoints($value) ! gr:category-t(.),(),fn:false(),
           $df[2],$df))
       )
     )
   }
 };
 
-declare function term-($value)
+declare function gr:term-($value)
 {
   function($n,$i,$c,$r,$ws,$f,$df) {
     let $n_ := $n || "_" || $i
-    let $nt := non-term($n_)
+let $lll := util:log-app('TRACE','apps.nabu',($value,$n_))
+    let $nt := gr:non-term($n_)
     return (
-      make-rules($n,$i+1,$c,($nt,$r),$ws,$f,$df),
-      fn:tail(make-rules($n_,1,fn:string-to-codepoints($value) ! category-t(.),(),fn:false(),
+      gr:make-rules($n,$i+1,$c,($nt,$r),$ws,$f,$df),
+      fn:tail(gr:make-rules($n_,1,fn:string-to-codepoints($value) ! gr:category-t(.),(),fn:false(),
         $df[1],$df))
     )
   }
 };
 
-declare function non-term($value)
+declare function gr:non-term($value)
 {
+    let $v := util:log-system-out(if ($value) then $value else 'empty')
+    return
   function($n,$i,$c,$r,$ws,$f,$df) {
-    make-rules($n,$i,($c,category-nt($value)),$r,$ws,$f,$df)
+    gr:make-rules($n,$i,($c,gr:category-nt($value)),$r,$ws,$f,$df)
   }
 };
 
-declare function non-term-($value)
+declare function gr:non-term-($value)
 {
   function($n,$i,$c,$r,$ws,$f,$df) {
     let $n_ := $n || "_" || $i
-    let $nt := non-term($n_)
+    let $nt := gr:non-term($n_)
     return (
-      make-rules($n,$i+1,$c,($nt,$r),$ws,$f,$df),
-      fn:tail(make-rules($n_,1,category-nt($value),(),$ws,$df[1],$df))
+      gr:make-rules($n,$i+1,$c,($nt,$r),$ws,$f,$df),
+      fn:tail(gr:make-rules($n_,1,gr:category-nt($value),(),$ws,$df[1],$df))
     )
   }
 };
 
-declare function non-term-attr($value)
+declare function gr:non-term-attr($value)
 {
   function($n,$i,$c,$r,$ws,$f,$df) {
     let $n_ := $n || "_" || $i
-    let $nt := non-term($n_)
+    let $nt := gr:non-term($n_)
     return (
-      make-rules($n,$i+1,$c,($nt,$r),$ws,$f,$df),
-      fn:tail(make-rules($n_,1,category-nt($value),(),$ws,$df[6]($value),$df))
+      gr:make-rules($n,$i+1,$c,($nt,$r),$ws,$f,$df),
+      fn:tail(gr:make-rules($n_,1,gr:category-nt($value),(),$ws,$df[6]($value),$df))
     )
   }
 };
 
-declare function optional($b)
+declare function gr:optional($b)
 {
-  let $b_ := make-non-terms($b)
+  let $b_ := gr:make-non-terms($b)
   return function($n,$i,$c,$r,$ws,$f,$df) {
-    chain($i,(
-      make-rules($n,?,$c,$r,$ws,$f,$df),
-      make-rules($n,?,$c,($b_,$r),$ws,$f,$df)
+    gr:chain($i,(
+      gr:make-rules($n,?,$c,$r,$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b_,$r),$ws,$f,$df)
     ))
   }
 };
 
-declare function one-or-more($b)
+declare function gr:one-or-more($b)
 {
-  one-or-more($b,())
+  gr:one-or-more($b,())
 };
 
-declare function one-or-more($b,$s)
+declare function gr:one-or-more($b,$s)
 {
-  let $b_ := make-non-terms($b)
-  let $s_ := make-non-terms($s)
+  let $b_ := gr:make-non-terms($b)
+  let $s_ := gr:make-non-terms($s)
   return function($n,$i,$c,$r,$ws,$f,$df) {
     let $n_ := $n || "_" || $i
-    let $nt := non-term($n_)
+    let $nt := gr:non-term($n_)
     return (
-      make-rules($n,$i+1,$c,($nt,$r),$ws,$f,$df),
-      fn:tail(chain(1,(
-        make-rules($n_,?,(),$b_,$ws,$df[4],$df),
-        make-rules($n_,?,(),($nt,$s_,$b_),$ws,$df[4],$df)
+      gr:make-rules($n,$i+1,$c,($nt,$r),$ws,$f,$df),
+      fn:tail(gr:chain(1,(
+        gr:make-rules($n_,?,(),$b_,$ws,$df[4],$df),
+        gr:make-rules($n_,?,(),($nt,$s_,$b_),$ws,$df[4],$df)
       )))
     )
   }
 };
 
-declare function zero-or-more($b)
+declare function gr:zero-or-more($b)
 {
-  let $b_ := make-non-terms($b)
+  let $b_ := gr:make-non-terms($b)
   return function($n,$i,$c,$r,$ws,$f,$df) {
     let $n_ := $n || "_" || $i
-    let $nt := non-term($n_)
+    let $nt := gr:non-term($n_)
     return (
-      make-rules($n,$i+1,$c,($nt,$r),$ws,$f,$df),
-      fn:tail(chain(1,(
-        make-rules($n_,?,(),(),$ws,$df[4],$df),
-        make-rules($n_,?,(),($nt,$b_),$ws,$df[4],$df)
+      gr:make-rules($n,$i+1,$c,($nt,$r),$ws,$f,$df),
+      fn:tail(gr:chain(1,(
+        gr:make-rules($n_,?,(),(),$ws,$df[4],$df),
+        gr:make-rules($n_,?,(),($nt,$b_),$ws,$df[4],$df)
       )))
     )
   }
 };
 
-declare function zero-or-more($b,$s)
+declare function gr:zero-or-more($b,$s)
 {
-  if(fn:empty($s)) then zero-or-more($b)
-  else optional(one-or-more($b,$s))
+  if(fn:empty($s)) then gr:zero-or-more($b)
+  else gr:optional(gr:one-or-more($b,$s))
 };
 
-declare function sequence($b)
+declare function gr:sequence($b)
 {
-  let $b_ := make-non-terms($b)
+  let $b_ := gr:make-non-terms($b)
   return function($n,$i,$c,$r,$ws,$f,$df) {
-    make-rules($n,$i,$c,($b_,$r),$ws,$f,$df)
+    gr:make-rules($n,$i,$c,($b_,$r),$ws,$f,$df)
   }
 };
 
-declare function choice($b1,$b2)
+declare function gr:choice($b1,$b2)
 {
-  let $b1_ := make-non-terms($b1)
-  let $b2_ := make-non-terms($b2)
+  let $b1_ := gr:make-non-terms($b1)
+  let $b2_ := gr:make-non-terms($b2)
   return function($n,$i,$c,$r,$ws,$f,$df) {
-    chain($i,(
-      make-rules($n,?,$c,($b1_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b2_,$r),$ws,$f,$df)
+    gr:chain($i,(
+      gr:make-rules($n,?,$c,($b1_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b2_,$r),$ws,$f,$df)
     ))
   }
 };
 
-declare function choice($b1,$b2,$b3)
+declare function gr:choice($b1,$b2,$b3)
 {
-  let $b1_ := make-non-terms($b1)
-  let $b2_ := make-non-terms($b2)
-  let $b3_ := make-non-terms($b3)
+  let $b1_ := gr:make-non-terms($b1)
+  let $b2_ := gr:make-non-terms($b2)
+  let $b3_ := gr:make-non-terms($b3)
   return function($n,$i,$c,$r,$ws,$f,$df) {
-    chain($i,(
-      make-rules($n,?,$c,($b1_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b2_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b3_,$r),$ws,$f,$df)
+    gr:chain($i,(
+      gr:make-rules($n,?,$c,($b1_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b2_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b3_,$r),$ws,$f,$df)
     ))
   }
 };
 
-declare function choice($b1,$b2,$b3,$b4)
+declare function gr:choice($b1,$b2,$b3,$b4)
 {
-  let $b1_ := make-non-terms($b1)
-  let $b2_ := make-non-terms($b2)
-  let $b3_ := make-non-terms($b3)
-  let $b4_ := make-non-terms($b4)
+  let $b1_ := gr:make-non-terms($b1)
+  let $b2_ := gr:make-non-terms($b2)
+  let $b3_ := gr:make-non-terms($b3)
+  let $b4_ := gr:make-non-terms($b4)
   return function($n,$i,$c,$r,$ws,$f,$df) {
-    chain($i,(
-      make-rules($n,?,$c,($b1_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b2_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b3_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b4_,$r),$ws,$f,$df)
+    gr:chain($i,(
+      gr:make-rules($n,?,$c,($b1_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b2_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b3_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b4_,$r),$ws,$f,$df)
     ))
   }
 };
 
-declare function choice($b1,$b2,$b3,$b4,$b5)
+declare function gr:choice($b1,$b2,$b3,$b4,$b5)
 {
-  let $b1_ := make-non-terms($b1)
-  let $b2_ := make-non-terms($b2)
-  let $b3_ := make-non-terms($b3)
-  let $b4_ := make-non-terms($b4)
-  let $b5_ := make-non-terms($b5)
+  let $b1_ := gr:make-non-terms($b1)
+  let $b2_ := gr:make-non-terms($b2)
+  let $b3_ := gr:make-non-terms($b3)
+  let $b4_ := gr:make-non-terms($b4)
+  let $b5_ := gr:make-non-terms($b5)
   return function($n,$i,$c,$r,$ws,$f,$df) {
-    chain($i,(
-      make-rules($n,?,$c,($b1_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b2_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b3_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b4_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b5_,$r),$ws,$f,$df)
+    gr:chain($i,(
+      gr:make-rules($n,?,$c,($b1_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b2_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b3_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b4_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b5_,$r),$ws,$f,$df)
     ))
   }
 };
 
-declare function choice($b1,$b2,$b3,$b4,$b5,$b6)
+declare function gr:choice($b1,$b2,$b3,$b4,$b5,$b6)
 {
-  let $b1_ := make-non-terms($b1)
-  let $b2_ := make-non-terms($b2)
-  let $b3_ := make-non-terms($b3)
-  let $b4_ := make-non-terms($b4)
-  let $b5_ := make-non-terms($b5)
-  let $b6_ := make-non-terms($b6)
+  let $b1_ := gr:make-non-terms($b1)
+  let $b2_ := gr:make-non-terms($b2)
+  let $b3_ := gr:make-non-terms($b3)
+  let $b4_ := gr:make-non-terms($b4)
+  let $b5_ := gr:make-non-terms($b5)
+  let $b6_ := gr:make-non-terms($b6)
   return function($n,$i,$c,$r,$ws,$f,$df) {
-    chain($i,(
-      make-rules($n,?,$c,($b1_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b2_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b3_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b4_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b5_,$r),$ws,$f,$df),
-      make-rules($n,?,$c,($b6_,$r),$ws,$f,$df)
+    gr:chain($i,(
+      gr:make-rules($n,?,$c,($b1_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b2_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b3_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b4_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b5_,$r),$ws,$f,$df),
+      gr:make-rules($n,?,$c,($b6_,$r),$ws,$f,$df)
     ))
   }
 };
 
-declare function nchoice($b)
+declare function gr:nchoice($b)
 {
-  let $b_ := make-non-terms($b)
+  let $b_ := gr:make-non-terms($b)
   return function($n,$i,$c,$r,$ws,$f,$df) {
-    chain($i, $b_ ! make-rules($n,?,$c,(.,$r),$ws,$f,$df))
+    gr:chain($i, $b_ ! gr:make-rules($n,?,$c,(.,$r),$ws,$f,$df))
   }
 };
 
-declare %private function make-non-terms($categories)
+declare %private function gr:make-non-terms($categories)
 {
   for $c in $categories
   return typeswitch($c)
-    case xs:string return non-term($c)
+    case xs:string return gr:non-term($c)
     default return $c
 };
 
-declare function rule($n,$categories)
+declare function gr:rule($n,$categories)
 {
-  rule($n,$categories,())
+  gr:rule($n,$categories,())
 };
 
-declare function rule-($n,$categories)
+declare function gr:rule-($n,$categories)
 {
-  rule-($n,$categories,())
+  gr:rule-($n,$categories,())
 };
 
-declare function rule-attr($n,$categories)
+declare function gr:rule-attr($n,$categories)
 {
-  rule-attr($n,$categories,())
+  gr:rule-attr($n,$categories,())
 };
 
-declare function rule($n,$categories,$options)
+declare function gr:rule($n,$categories,$options)
 {
   let $ws := fn:not($options = $gr:ws-option)
   return function($df) {
-    fn:tail(make-rules($n,1,(),make-non-terms($categories),$ws,$df[5]($n),$df))
+    fn:tail(gr:make-rules($n,1,(),gr:make-non-terms($categories),$ws,$df[5]($n),$df))
   }
 };
 
-declare function rule-($n,$categories,$options)
+declare function gr:rule-($n,$categories,$options)
 {
   let $ws := fn:not($options = $gr:ws-option)
   return function($df) {
-    fn:tail(make-rules($n,1,(),make-non-terms($categories),$ws,$df[4],$df))
+    fn:tail(gr:make-rules($n,1,(),gr:make-non-terms($categories),$ws,$df[4],$df))
   }
 };
 
-declare function rule-attr($n,$categories,$options)
+declare function gr:rule-attr($n,$categories,$options)
 {
   let $ws := fn:not($options = $gr:ws-option)
   return function($df) {
-    fn:tail(make-rules($n,1,(),make-non-terms($categories),$ws,$df[6]($n),$df))
+    fn:tail(gr:make-rules($n,1,(),gr:make-non-terms($categories),$ws,$df[6]($n),$df))
   }
 };
 
-declare function rule($n,$categories,$options,$f)
+declare function gr:rule($n,$categories,$options,$f)
 {
   let $ws := fn:not($options = $gr:ws-option)
   return function($df) {
-    fn:tail(make-rules($n,1,(),make-non-terms($categories),$ws,$f,$df))
+    fn:tail(gr:make-rules($n,1,(),gr:make-non-terms($categories),$ws,$f,$df))
   }
 };
 
-declare function token($n,$categories)
+declare function gr:token($n,$categories)
 {
   function($df) {
-    fn:tail(make-rules($n,1,(),make-non-terms($categories),fn:false(),$df[3],$df))
+    fn:tail(gr:make-rules($n,1,(),gr:make-non-terms($categories),fn:false(),$df[3],$df))
   }
 };
 
-declare function token-($n,$categories)
+declare function gr:token-($n,$categories)
 {
   function($df) {
-    fn:tail(make-rules($n,1,(),make-non-terms($categories),fn:false(),$df[1],$df))
+    fn:tail(gr:make-rules($n,1,(),gr:make-non-terms($categories),fn:false(),$df[1],$df))
   }
 };
 
-declare function ws($n,$categories)
+declare function gr:ws($n,$categories)
 {
   function($df) {
-    rule($n,$categories,$gr:ws-option,$df[1])($df),
-    rule($gr:ws-state,$n,$gr:ws-option,$df[1])($df)
+    gr:rule($n,$categories,$gr:ws-option,$df[1])($df),
+    gr:rule($gr:ws-state,$n,$gr:ws-option,$df[1])($df)
   }
 };
 
-declare function ws($n,$categories,$f)
+declare function gr:ws($n,$categories,$f)
 {
   function($df) {
-    rule($n,$categories,$gr:ws-option,$f)($df),
-    rule($gr:ws-state,$n,$gr:ws-option,$df[1])($df)
+    gr:rule($n,$categories,$gr:ws-option,$f)($df),
+    gr:rule($gr:ws-state,$n,$gr:ws-option,$df[1])($df)
   }
 };
 
-declare function grammar($rules)
+declare function gr:grammar($rules)
 {
-  grammar($rules,?)
+  gr:grammar($rules,?)
 };
 
-declare %private function grammar($rules,$df)
+declare %private function gr:grammar($rules,$df)
 {
+let $lll := util:log-app('TRACE','apps.nabu',count($rules))
+let $lll := util:log-app('TRACE','apps.nabu',count($df))
   let $rules := $rules ! .($df)
+let $lll := util:log-app('TRACE','apps.nabu',"post")
+let $lll := util:log-app('TRACE','apps.nabu',$rules)
   let $map := fn:fold-left(
+    $rules,
+    hmap:create(),
     function($map,$rule) {
       $rule(function($category,$categories,$ws,$f) {
-        let $rule := map:get($map,$category)
+        let $rule := hmap:get($map,$category)
         let $id :=
           if($category eq $gr:ws-state) then $gr:ws-id
           else if(fn:exists($rule)) then fn:head($rule)
-          else (map:count($map) + $gr:start-id)
-        let $set := if(fn:exists($rule)) then fn:tail($rule) else ruleset()
-        return map:put($map,$category,($id,ruleset-put($set,rulerhs($categories,$ws,$f))))
+          else (hmap:count($map) + $gr:start-id)
+        let $set := if(fn:exists($rule)) then fn:tail($rule) else gr:ruleset()
+        return hmap:put($map,$category,($id,gr:ruleset-put($set,gr:rulerhs($categories,$ws,$f))))
       })
-    },
-    map:create(),
-    $rules
+    }
   )
-  return map:put($map,$gr:epsilon-state,($gr:epsilon-id))
+  return hmap:put($map,$gr:epsilon-state,($gr:epsilon-id))
 };
 
-declare function grammar-get($grammar,$category)
+declare function gr:grammar-get($grammar,$category)
 {
-  let $rule := map:get($grammar,$category)
+  let $rule := hmap:get($grammar,$category)
   where fn:exists($rule)
-  return ruleset-fold(function($s,$c){ $s,$c },(),fn:tail($rule))
+  return gr:ruleset-fold(function($s,$c){ $s,$c },(),fn:tail($rule))
 };
 
-declare function grammar-get-id($grammar,$category)
+declare function gr:grammar-get-id($grammar,$category)
 {
-  let $rule := map:get($grammar,$category)
+  let $rule := hmap:get($grammar,$category)
   where fn:exists($rule)
   return fn:head($rule)
 };
 
-declare function category-nullable($grammar,$category)
+declare function gr:category-nullable($grammar,$category)
 {
-  category-nullable($grammar,$category,())
+  gr:category-nullable($grammar,$category,())
 };
 
-declare %private function category-nullable($grammar,$category,$searched)
+declare %private function gr:category-nullable($grammar,$category,$searched)
 {
   if($category = $searched) then fn:true() else
-  some $rule in grammar-get($grammar,$category)
+  some $rule in gr:grammar-get($grammar,$category)
   satisfies
     (every $rc in $rule(function($c,$ws,$f) { $c }) satisfies $rc(
       (:nt:) function($h,$s) { fn:true() },
@@ -624,7 +631,7 @@ declare %private function category-nullable($grammar,$category,$searched)
       (:tr:) function($h,$s,$e) { fn:false() }
     )) and
     (every $rc in $rule(function($c,$ws,$f) { $c }) satisfies $rc(
-      (:nt:) function($h,$s) { category-nullable($grammar,$s,($searched,$category)) },
+      (:nt:) function($h,$s) { gr:category-nullable($grammar,$s,($searched,$category)) },
       (:t:) function($h,$s) { fn:false() },
       (:tr:) function($h,$s,$e) { fn:false() }
     ))

@@ -18,13 +18,13 @@ xquery version "3.0";
 
 module namespace p = "http://snelson.org.uk/functions/parser-runtime";
 declare default function namespace "http://snelson.org.uk/functions/parser-runtime";
-import module namespace map = "http://snelson.org.uk/functions/hashmap" at "hashmap.xq";
-import module namespace array = "http://snelson.org.uk/functions/array" at "array.xq";
+import module namespace hmap = "http://snelson.org.uk/functions/hashmap" at "hashmap.xq";
+import module namespace sarray = "http://snelson.org.uk/functions/array" at "array.xq";
 import module namespace hamt = "http://snelson.org.uk/functions/hamt" at "hamt.xq";
 
-declare variable $epsilon-id := 0;
-declare variable $ws-id := 1;
-declare variable $start-id := 2;
+declare variable $p:epsilon-id := 0;
+declare variable $p:ws-id := 1;
+declare variable $p:start-id := 2;
 
 (: -------------------------------------------------------------------------- :)
 
@@ -120,12 +120,12 @@ declare %private function rowset-fold(
 declare %private function chart($states)
 {
   let $rows := epsilon-expand($states,rowset(),0,row($states,0,0,()))
-  return array:put(array:create(),0,$rows)
+  return sarray:put(sarray:create(),0,$rows)
 };
 
 declare %private function chart-get($chart,$index)
 {
-  let $rows := array:get($chart,$index)
+  let $rows := sarray:get($chart,$index)
   return if(fn:empty($rows)) then () else
     rowset-fold(function($r,$row) { $r,$row },(),$rows)
 };
@@ -133,7 +133,7 @@ declare %private function chart-get($chart,$index)
 declare function chart-as-string($chart)
 {
   fn:string-join(
-    for $index in (0 to (array:size($chart)-1))
+    for $index in (0 to (sarray:size($chart)-1))
     let $rows := chart-get($chart,$index)
     return (
       "========== Chart " || $index || " (" || fn:count($rows) || " rows) ==========",
@@ -184,7 +184,7 @@ declare %private function parse($states,$chart,$index,$tokens)
     })
   },rowset(),$rows)
   let $newrows := rowset-fold(complete($states,$chart,?,$newindex,?),$newrows,$newrows)
-  let $chart := array:put($chart,$newindex,$newrows)
+  let $chart := sarray:put($chart,$newindex,$newrows)
   return parse($states,$chart,$newindex,fn:tail($tokens))
 };
 
@@ -213,7 +213,7 @@ declare %private function complete($states,$chart,$rows,$index,$row)
 
 declare %private function find-result($tokens,$chart)
 {
-  let $chart-size := array:size($chart)
+  let $chart-size := sarray:size($chart)
   let $rows := chart-get($chart,$chart-size - 1)
   return if(fn:empty($rows)) then
     parse-error($tokens,$chart-size - 1,chart-get($chart,$chart-size - 2))
